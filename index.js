@@ -1,7 +1,9 @@
 "use strict";
 
 const pg = require('pg').native;
+const co = require('co');
 const sqlFormat = require('./lib/sqlFormat');
+const _ = require('lodash');
 
 let isArray = function( arr ) {
     return Object.prototype.toString.call(arr) === '[object Array]';
@@ -14,7 +16,8 @@ let getWhere = function( obj ) {
         if( k == 'orderBy' || k == 'static_where'
           || k == 'limit' || k == 'offset') continue;
         if( where != '' ) where += ' AND ';
-        where += ` ${k} = :${k}`;
+        where += ` ${k} = :w_${k}`;
+        obj[`w_${k}`] = obj[k];
     }
     if( obj.static_where != '') {
         if( where != '' ) where += ' AND ';
@@ -34,13 +37,23 @@ let getOrderBy = function( obj ) {
     return ` order by ${obj.orderBy}`;
 };
 
+let getUpdate = function( obj ) {
+    let colum = '';
+    for(var k in obj) {
+        if( k == 'orderBy' || k == 'static_where'
+          || k == 'limit' || k == 'offset') continue;
+        if( where != '' ) where += ' AND ';
+        where += ` ${k} = :w_${k}`;
+        obj[`w_${k}`] = obj[k];
+    }
+    
+};
 
-let DB = function ( config ,logger) {
-    
-    logger = logger || require('./lib/logger');
-    
-    if ( !(this instanceof DB)) return new BD( config );
-    let client = new pg.Pool( config );
+
+
+let SqlUtil = function (db, logger) {
+
+    if ( !(this instanceof SqlUtil)) return new SqlUtil(db, logger );
 
     let query = function ( sql , param ) {
         
@@ -51,7 +64,7 @@ let DB = function ( config ,logger) {
         logger.debug(data);
 
         let timer = Date.now();
-        return client.query(sql, data).then( result => {
+        return db.query(sql, data).then( result => {
             logger.debug(JSON.stringify(result));
             logger.debug(`========================cost ${Date.now() - timer}ms=============================`);
             return result;
@@ -95,13 +108,52 @@ let DB = function ( config ,logger) {
             return { rows, total};
         });
     };
-    
-    this.transaction = function() {
-        return new Promise( ( resolve , reject ) => {
-            
+};
 
-        });
-    };
+
+let DB = function ( config ,logger) {
+    
+    logger = logger || require('./lib/logger');
+    
+    if ( !(this instanceof DB)) return new BD( config );
+    let client = new pg.Pool( config );
+
+    _.extend(this, new SqlUtil(client, logger));
+    
+    this.transaction = co.wrap(function *( ) {
+
+        let transClient = yield pool.connect();
+        yield transClient.query('BEGIN');
+        
+        let release = function() {
+            transClient.release();
+        };
+        
+        let transaction = {};
+        _.extend(transaction, new SqlUtil(transClient, logger));
+
+        transaction.commit = function(){
+            return transClient.query('COMMIT').then(()=>{
+                release();
+            });
+        };
+
+        transaction.rollback = function() {
+            return transClient.query('ROLLBACK').then(()=>{
+                release();
+            });;
+        };
+
+        setTimeout(function(){
+            if( transClient !=null ){
+                transClient.query('ROLLBACK').then(()=>{
+                    release();
+                });
+            }
+        }, config.timeout, 90000);
+        
+        return transaction;
+    });
     
 };
 
