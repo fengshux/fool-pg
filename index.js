@@ -5,6 +5,7 @@ const co = require('co');
 const sqlFormat = require('./lib/sqlFormat');
 const _ = require('lodash');
 
+
 let isArray = function( arr ) {
     return Object.prototype.toString.call(arr) === '[object Array]';
 };
