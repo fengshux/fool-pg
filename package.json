@@ -1,5 +1,5 @@
 {
-  "name": "node-db",
+  "name": "fool-pg",
   "version": "1.0.0",
   "description": "'node db format'",
   "main": "index.js",
