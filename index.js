@@ -38,18 +38,26 @@ let getOrderBy = function( obj ) {
     return ` order by ${obj.orderBy}`;
 };
 
-let getUpdate = function( obj ) {
-    let colum = '';
+let getUpdateColumn = function( obj ) {
+    let column = '';
     for(var k in obj) {
-        if( k == 'orderBy' || k == 'static_where'
-          || k == 'limit' || k == 'offset') continue;
-        if( where != '' ) where += ' AND ';
-        where += ` ${k} = :w_${k}`;
-        obj[`w_${k}`] = obj[k];
+        if( column != '' ) column += ' AND ';
+        column+= ` ${k} = :u_${k}`;
+        obj[`u_${k}`] = obj[k];
     }
-    
+    return column;
 };
 
+
+let getInsertColumn = function( obj ) {
+    let column = '';
+    let value = '';
+    let keys = Object.keys(obj);
+    return {
+        column: keys.join(' , '),
+        value: keys.map(x => `:${x}`).join(' , ')
+    };
+};
 
 
 let SqlUtil = function (db, logger) {
@@ -68,6 +76,12 @@ let SqlUtil = function (db, logger) {
         return db.query(sql, data).then( result => {
             logger.debug(JSON.stringify(result));
             logger.debug(`========================cost ${Date.now() - timer}ms=============================`);
+            if(sql.toLowerCase().includes('insert') && !sql.toLowerCase().includes('returning')){
+                return result;
+            }
+            if(sql.toLowerCase().includes('update') && !sql.toLowerCase().includes('returning')){
+                return result;
+            }
             return result;
         });
     };
@@ -109,6 +123,29 @@ let SqlUtil = function (db, logger) {
             return { rows, total};
         });
     };
+
+    this.update = function ( tableName, param, where ) {
+        let sql = `
+             update ${tableName} set ${getUpdatecolumn(param)} ${getWhere(where)}
+         `;
+        return query(sql, _.extend({}, param, where) );
+    };
+
+    this.save = function ( tableName, param ) {
+        let column = getInsertColumn(param);
+        let sql = `
+            insert into ${tableName} ( ${column.column} ) values ( ${column.value} )
+        `;
+        return query(sql, param);
+    };
+
+    this.delete = function ( tableName, where ) {
+        let sql = `
+            delete from ${tableName} ${getWhere(where)}
+        `;
+        return query(sql, where);
+    }; 
+    
 };
 
 
@@ -136,12 +173,14 @@ let DB = function ( config ,logger) {
         transaction.commit = function(){
             return transClient.query('COMMIT').then(()=>{
                 release();
+                transClient = null;
             });
         };
 
         transaction.rollback = function() {
             return transClient.query('ROLLBACK').then(()=>{
                 release();
+                transClient = null;
             });;
         };
 
@@ -155,28 +194,17 @@ let DB = function ( config ,logger) {
         
         return transaction;
     });
+
+    client.on('error', function(error, client) {
+        logger.error(error, client);
+        logger.info('Exit process');
+        process.exit(1);
+    });
+
+    client.on('connect', function() {
+        logger.log('db connected');
+    });
     
 };
 
-
-
-
-
-
-
-
-
-
-pool.on('error', function(error, client) {
-    console.error(error, client)
-    console.info('Exit process')
-    process.exit(1)
-});
-
-pool.on('connect', function() {
-    console.log('db connected');
-});
-
 module.exports = pool;
-
-
