@@ -153,7 +153,7 @@ let DB = function ( config ,logger) {
     
     logger = logger || require('./lib/logger');
     
-    if ( !(this instanceof DB)) return new BD( config );
+    if ( !(this instanceof DB)) return new DB( config );
     let client = new pg.Pool( config );
 
     _.extend(this, new SqlUtil(client, logger));
