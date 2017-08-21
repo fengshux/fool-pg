@@ -207,4 +207,4 @@ let DB = function ( config ,logger) {
     
 };
 
-module.exports = pool;
+module.exports = DB;
